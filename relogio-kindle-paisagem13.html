@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relógio Kindle Paisagem 2</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #fff; color: #000; overflow: hidden; }
+  body { font-family: Helvetica, Arial, sans-serif; }
+  #palco { position: absolute; left: 0; top: 0; overflow: hidden; background: #fff; }
+  #topo { position: absolute; left: 0; top: 0; width: 100%; text-align: center; }
+  #hora { font-weight: bold; line-height: 1; letter-spacing: -0.03em; white-space: nowrap; }
+  #base { position: absolute; left: 0; width: 100%; border-top: 4px solid #000; }
+  #linha2 { position: absolute; left: 0; width: 100%; height: 4px; background: #000; }
+  #extra { position: absolute; font-weight: bold; line-height: 1; white-space: nowrap; letter-spacing: -0.03em; }
+  .u { font-size: 0.5em; letter-spacing: 0; }
+  .dia { font-size: 0.75em; letter-spacing: 0; }
+  .esp { font-size: 0.6em; }
+  .esp2 { display: inline-block; width: 0.45em; }
+  #data, #temp { position: absolute; font-weight: bold; line-height: 1; white-space: nowrap; letter-spacing: -0.03em; }
+</style>
+</head>
+<body>
+<div id="palco">
+  <div id="topo"><div id="hora">--:--</div></div>
+  <div id="base">
+    <div id="data">--/--</div>
+    <div id="temp">--°C</div>
+    <div id="linha2"></div>
+
+    <div id="extra"><span id="diasem">&nbsp;</span><span class="esp2"></span><span id="valores">--<span class="u">%</span> --<span class="u">mm</span> --<span class="u">%</span></span></div>
+  </div>
+</div>
+
+<script>
+/* ===== CONFIGURAÇÃO =====
+   Troque aqui, ou use a URL: relogio-kindle-paisagem.html?lat=-22.9&lon=-43.2
+   Para forçar o giro para o outro lado: ?giro=esquerda */
+var CONFIG = {
+  lat: -23.55,
+  lon: -46.63,
+  fusoHoras: -3,
+  giro: "direita"
+};
+
+function param(nome) {
+  var m = new RegExp("[?&]" + nome + "=([^&]*)").exec(window.location.search);
+  return m ? decodeURIComponent(m[1].replace(/\+/g, " ")) : null;
+}
+if (param("lat")) CONFIG.lat = parseFloat(param("lat"));
+if (param("lon")) CONFIG.lon = parseFloat(param("lon"));
+if (param("fuso")) CONFIG.fusoHoras = parseFloat(param("fuso"));
+if (param("giro")) CONFIG.giro = param("giro");
+
+var SEMANA = ["D", "2ª", "3ª", "4ª", "5ª", "6ª", "S"];
+
+function dois(n) { return (n < 10 ? "0" : "") + n; }
+function el(id) { return document.getElementById(id); }
+
+function agoraLocal() {
+  var d = new Date();
+  var utc = d.getTime() + d.getTimezoneOffset() * 60000;
+  return new Date(utc + CONFIG.fusoHoras * 3600000);
+}
+
+function atualizarRelogio() {
+  var d = agoraLocal();
+  el("hora").innerHTML = dois(d.getHours()) + ":" + dois(d.getMinutes());
+  el("data").innerHTML = dois(d.getDate()) + "/" + dois(d.getMonth() + 1);
+  el("diasem").innerHTML = SEMANA[d.getDay()];   // dia da semana na terceira linha
+  var ms = (60 - d.getSeconds()) * 1000 - d.getMilliseconds() + 200;
+  setTimeout(atualizarRelogio, ms);
+}
+
+function atualizarClima() {
+  var proto = window.location.protocol === "https:" ? "https:" : "http:";
+  var url = proto + "//api.open-meteo.com/v1/forecast?latitude=" + CONFIG.lat +
+    "&longitude=" + CONFIG.lon +
+    "&current=temperature_2m,relative_humidity_2m" +
+    "&daily=precipitation_sum,precipitation_probability_max&forecast_days=1&timezone=auto";
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", url, true);
+  xhr.onreadystatechange = function () {
+    if (xhr.readyState !== 4) return;
+    if (xhr.status === 200) {
+      try {
+        var j = JSON.parse(xhr.responseText);
+        el("temp").innerHTML = Math.round(j.current.temperature_2m) + "°C";
+        // umidade relativa atual e chuva prevista para o dia (mm, sem casas decimais)
+        var ur = Math.round(j.current.relative_humidity_2m);
+        var mm = j.daily.precipitation_sum[0];
+        var mmTxt = String(Math.round(mm || 0));   // 0,4 -> 0 ; 0,5 -> 1 ; 12,6 -> 13
+        var prob = j.daily.precipitation_probability_max[0];
+        var probTxt = (prob === null || prob === undefined) ? "--" : Math.round(prob);
+        // ordem: umidade, chuva prevista (mm), probabilidade de chuva
+        el("valores").innerHTML = extraHTML(ur, mmTxt, probTxt);
+      } catch (e) {}
+    }
+  };
+  xhr.send(null);
+}
+
+function transformar(no, valor) {
+  no.style.webkitTransform = valor;
+  no.style.transform = valor;
+  no.style.webkitTransformOrigin = "0 0";
+  no.style.transformOrigin = "0 0";
+}
+
+/* Monta o layout em paisagem. Se a tela estiver em pé (o navegador do
+   Kindle não gira), a página é girada 90° por CSS. */
+function ajustar() {
+  var vw = window.innerWidth || document.documentElement.clientWidth;
+  var vh = window.innerHeight || document.documentElement.clientHeight;
+  var palco = el("palco");
+  var W, H;
+
+  if (vw >= vh) {
+    W = vw; H = vh;
+    transformar(palco, "none");
+  } else {
+    W = vh; H = vw;
+    if (CONFIG.giro === "esquerda") {
+      transformar(palco, "translate(0px," + vh + "px) rotate(-90deg)");
+    } else {
+      transformar(palco, "translate(" + vw + "px,0px) rotate(90deg)");
+    }
+  }
+  palco.style.width = W + "px";
+  palco.style.height = H + "px";
+
+  var data = el("data"), temp = el("temp"), base = el("base");
+  var topo = el("topo"), hora = el("hora");
+
+  // 1) Hora: mesmo tamanho de antes (até 76% da altura, limitada pela largura)
+  var fonte = Math.floor(H * 0.76);
+  var larg = medir("00:00", fonte, "-0.03em");
+  if (larg > W * 0.9) fonte = Math.floor(fonte * (W * 0.9) / larg);
+  var alturaTopo = Math.ceil(fonte * 1.06);
+
+  // 2) Faixa de baixo: "DIA dd/mm" + temperatura; linha; umidade e chuva
+  var alturaBase = H - alturaTopo;
+  var largData = medir("00/00", 100, "-0.03em") / 100;   // largura por px de fonte
+  var largTemp = medir("00°C", 100, "-0.03em") / 100;
+  // tamanho FIXO da última linha: calculado uma vez para o pior caso
+  // ("100% 99mm 100%"), e não muda quando os números do clima mudam
+  // terceira linha: dia da semana + valores; pior caso entre os 7 dias
+  var largExtra = 0;
+  for (var i = 0; i < SEMANA.length; i++)
+    largExtra = Math.max(largExtra, medir(SEMANA[i] + "<span class=\"esp2\"></span>" + extraHTML(100, "99", 100), 100, "-0.03em"));
+  largExtra = largExtra / 100;
+  var folga = W * 0.12;
+  var f = Math.floor((W * 0.94 - folga) / (largData + largTemp));   // data/temp
+  // última linha: agora só umidade e chuva, ocupando a largura toda
+  var g = Math.floor((W * 0.96) / largExtra);
+  g = Math.min(g, f);
+  // se faltar altura, quem diminui é a linha da data e temperatura
+  var vaos = 0.62;                          // espaços verticais, proporcionais à data
+  if (f * (1 + vaos) + g > alturaBase) {
+    f = Math.floor((alturaBase - g) / (1 + vaos));
+    if (g > f) { g = f; }
+  }
+  var sobra = alturaBase - (f + g);
+  var m1 = Math.floor(sobra * 0.22);   // acima da data (pequeno: data "sobe")
+  var m2 = Math.floor(sobra * 0.26);   // entre data e linha
+  var m3 = Math.floor(sobra * 0.26);   // entre linha e umidade/chuva
+
+  data.style.fontSize = f + "px";
+  temp.style.fontSize = f + "px";
+  el("extra").style.fontSize = g + "px";
+  base.style.top = alturaTopo + "px";
+  base.style.height = alturaBase + "px";
+  data.style.left = "4%"; data.style.right = "auto"; data.style.textAlign = "left";
+  temp.style.right = "4%"; temp.style.left = "auto"; temp.style.textAlign = "right";
+  data.style.top = m1 + "px";
+  temp.style.top = m1 + "px";
+  var yLinha = m1 + f + m2;
+  el("linha2").style.top = yLinha + "px";
+  var extra = el("extra");
+  extra.style.left = "0px"; extra.style.right = "0px"; extra.style.textAlign = "center";
+  extra.style.top = (yLinha + 4 + m3) + "px";
+
+  topo.style.height = alturaTopo + "px";
+  hora.style.fontSize = fonte + "px";
+  hora.style.paddingTop = Math.max(0, Math.floor((alturaTopo - fonte) / 2)) + "px";
+}
+
+function extraHTML(ur, mm, prob) {
+  var u = function (t) { return "<span class=\"u\">" + t + "</span>"; };
+  var sp = "<span class=\"esp\"> </span>";
+  return ur + u("%") + sp + mm + u("mm") + sp + prob + u("%");
+}
+
+function medir(texto, fonte, espaco) {
+  var tmp = document.createElement("span");
+  tmp.style.fontSize = fonte + "px";
+  tmp.style.fontWeight = "bold";
+  tmp.style.letterSpacing = espaco;
+  tmp.style.whiteSpace = "nowrap";
+  tmp.style.position = "absolute";
+  tmp.innerHTML = texto;
+  document.body.appendChild(tmp);
+  var w = tmp.offsetWidth;
+  document.body.removeChild(tmp);
+  return w;
+}
+
+atualizarRelogio();
+ajustar();
+window.onresize = ajustar;
+window.onorientationchange = ajustar;
+atualizarClima();
+setInterval(atualizarClima, 30 * 60 * 1000);
+</script>
+</body>
+</html>
